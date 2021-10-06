@@ -1,0 +1,56 @@
+---
+title: "LOD-imputation"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{LOD-imputation}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(LODmix)
+```
+
+# Setup I - warm-up
+
+```{r}
+set.seed(1234)
+
+n = 400
+p = 5
+q = 2
+
+sig <- Matrix::bdiag(
+  matrix(.25, nrow = 5, ncol = 5),
+  matrix(.75, nrow = 5, ncol = 5))
+Matrix::diag(sig) <- 1
+
+alph <- -matrix(runif(p*(q+1), .1, .5), ncol = p, nrow = q+1) %>% round(2)
+
+prop = sample(1 - seq(.5, .9, length.out = p))
+
+pop_LODs <- gen_env_mix(n = 10^5, p = p, q = q, error.dist = 'mvnorm',
+                        alpha = alph, sigma = sig,
+                        LOD = NULL, LOD.p = prop)
+
+lod_data <- gen_env_mix(n = n, p = p, q = q, error.dist = 'mvnorm',
+                        alpha = alph, sigma = sig,
+                        return.full.data = TRUE,
+                        LOD = pop_LODs)
+```
+
+
+## Auxiliary data
+
+-   $\boldsymbol{X}^*_{(n \times 2)} \sim N(\boldsymbol{0}, \boldsymbol{I}_2)$
+    -   $X_1 = I(X^*_1 < 0)$
+    -   $X_2 = X^*_2$
+
+## Environmental exposures
