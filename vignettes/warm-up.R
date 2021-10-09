@@ -1,6 +1,7 @@
-# rm(list = ls()); gc()
+rm(list = ls()); gc()
 
-
+library(tidyverse)
+library(survival)
 
 
 # SETUP -------------------------------------------------------------------
@@ -42,7 +43,7 @@ colMeans(1 - lod_data$delta)
 imp_time <- imput_lod_tobit(lod_data$lod.data, lod_data$delta, lod_data$X)
 
 
-library(survival)
+
 s0 <- survfit(Surv(lod_data$full.data[,2], rep(1, nrow(lod_data$full.data))) ~ 1)
 s1 <- survfit(Surv(lod_data$lod.data[,2], lod_data$delta[,2]) ~ 1)
 s2 <- survfit(Surv(imp_time[,2], rep(1, nrow(imp_time))) ~ 1)
