@@ -40,56 +40,65 @@ colMeans(1 - lod_data$delta)
 
 # GAUSSIAN IMPUTATION -----------------------------------------------------
 
-imp_time <- imput_lod_tobit(lod_data$lod.data, lod_data$delta, lod_data$X)
+# imp_time <- imput_lod_tobit(lod_data$lod.data, lod_data$delta, lod_data$X)
+#
+# s0 <- survfit(Surv(lod_data$full.data[,2], rep(1, nrow(lod_data$full.data))) ~ 1)
+# s1 <- survfit(Surv(lod_data$lod.data[,2], lod_data$delta[,2]) ~ 1)
+# s2 <- survfit(Surv(imp_time[,2], rep(1, nrow(imp_time))) ~ 1)
+#
+# colMeans(1 - lod_data$delta)
+#
+# plot(s0, conf.int = F)
+# lines(s1, conf.int = F, col = 2)
+# lines(s2, conf.int = F, col = 3)
 
 
 
-s0 <- survfit(Surv(lod_data$full.data[,2], rep(1, nrow(lod_data$full.data))) ~ 1)
-s1 <- survfit(Surv(lod_data$lod.data[,2], lod_data$delta[,2]) ~ 1)
-s2 <- survfit(Surv(imp_time[,2], rep(1, nrow(imp_time))) ~ 1)
-
-colMeans(1 - lod_data$delta)
-
-plot(s0, conf.int = F)
-lines(s1, conf.int = F, col = 2)
-lines(s2, conf.int = F, col = 3)
-
-
-
-
-
-
+# -------------------------------------------------------------------------
 
 time = lod_data$lod.data
 delta = lod_data$delta
 covs = lod_data$X
 
-# -------------------------------------------------------------------------
-
 p <- ncol(time)
 q <- ncol(covs)
 res <- array(dim = dim(time))
-scale <- rep(NA, p)
-beta <- array(dim = c(q+1, p))
+surv <- vector('list', length = p)
 for (i in 1:p) {
-  # Fit linear model for censored data
-  fit <- survival::survreg(survival::Surv(time[,i], delta[,i]) ~ covs,
-                           dist = 'gaussian')
-  res[,i] <- resid(fit)
-  scale[i] <- fit$scale
-  beta[,i] <- coef(fit)
-}
+  # Rank AFT coefficients
+  alpha <- coef_rankAFT(y = time[,i], x = covs, delta = delta[,i],
+                        intercept = F)
 
-# scaled residuals covariance matrix
-S <- var(res %*% diag(scale/apply(res, 2, sd)))
+  # Residuals
+  res[,i] <- c(time[,i] - c(alpha %*% t(covs)))
+
+  # Residual survival
+  surv[[i]] <- survfit(Surv(res[,i], delta[,i]) ~ 1, se = F)
+}
 
 # everyone that has at least one censored outcome
 idx <- which(rowSums(1 - delta) > 0)
 new.time <- time
 
+library(copula)
+u <- rCopula(length(idx), empCopula(pobs(res)))
+
+x <- 1:10
+y <- rnorm(10)
+approx(x, y)
+
+plot(x, y)
+points(approx(x, y), col = 2, pch = "*")
+points(approx(x, y, method = "constant"), col = 4, pch = "*")
+
+
+
 for (i in idx) {
   j0 <- which(delta[i,] == 0)
   j1 <- which(delta[i,] == 1)
+
+  res[i,j0]
+
 
   if (length(j1) > 0) {
     s00 <- as.matrix(S[j0,j0])

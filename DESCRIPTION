@@ -19,8 +19,7 @@ BugReports: https://github.com/vsritter/LODmix/issues
 Imports: 
     magrittr,
     mvtnorm,
-    survival,
-    tmvtnorm
+    survival
 Suggests: 
     rmarkdown,
     knitr

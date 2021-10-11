@@ -3,8 +3,6 @@
 export("%>%")
 export(coef_rankAFT)
 export(gen_env_mix)
-export(imput_lod_tobit)
 export(survf)
 importFrom(magrittr,"%>%")
 importFrom(mvtnorm,rmvnorm)
-importFrom(tmvtnorm,rtmvnorm)
