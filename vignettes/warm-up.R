@@ -2,6 +2,7 @@ rm(list = ls()); gc()
 
 library(tidyverse)
 library(survival)
+library(LODmix)
 
 
 # SETUP -------------------------------------------------------------------
@@ -12,12 +13,12 @@ p = 5
 q = 2
 
 sig <- Matrix::bdiag(
-  matrix(.25, nrow = 2, ncol = 2),
+  matrix(.1, nrow = 2, ncol = 2),
   matrix(.75, nrow = 3, ncol = 3))
 Matrix::diag(sig) <- 1
 
-sig <- 1/2*sig
-
+sig <- diag(p)
+sig <- 1/4^2*sig
 
 alph <- -matrix(runif(p*(q+1), .1, .5), ncol = p, nrow = q+1) %>% round(2)
 
@@ -27,116 +28,205 @@ prop = sample(1 - seq(.5, .9, length.out = p))
 # SIMULATE DATA -----------------------------------------------------------
 
 
-pop_LODs <- gen_env_mix(n = 10^5, p = p, q = q, error.dist = 'mvnorm',
+pop_LODs <- gen_env_mix(n = 10^6, p = p, q = q, error.dist = 'mvnorm',
                         alpha = alph, sigma = sig,
                         LOD = NULL, LOD.p = prop)
 
-lod_data <- gen_env_mix(n = 400, p = p, q = q, error.dist = 'mvnorm',
+lod_data <- gen_env_mix(n = 200, p = p, q = q, error.dist = 'mvnorm',
                         alpha = alph, sigma = sig,
                         return.full.data = TRUE,
                         LOD = pop_LODs)
 
-colMeans(1 - lod_data$delta)
+
+# time = lod_data$lod.data
+# delta = lod_data$delta
+# covs = lod_data$X
+
+
+mi_time <- imput_lod_tobit_v2(lod_data$lod.data, lod_data$delta, lod_data$X,
+                              lod_data$full.data, sig, alph, r = 500)
+
+coord <- which(lod_data$delta == 0, arr.ind = T
+               )
+lapply(1:r, function(x) {
+  mi <- mi_time[,1]
+  miT <- mi_time[mi == x,-c(1, 2)]
+
+
+  theta[3,] <- lm(Y ~ cbind(X, Z))$coef
+})
+
+lm(Y ~ cbind(X, Z))$coef
+
+
 
 # GAUSSIAN IMPUTATION -----------------------------------------------------
 
-# imp_time <- imput_lod_tobit(lod_data$lod.data, lod_data$delta, lod_data$X)
-#
-# s0 <- survfit(Surv(lod_data$full.data[,2], rep(1, nrow(lod_data$full.data))) ~ 1)
-# s1 <- survfit(Surv(lod_data$lod.data[,2], lod_data$delta[,2]) ~ 1)
-# s2 <- survfit(Surv(imp_time[,2], rep(1, nrow(imp_time))) ~ 1)
-#
-# colMeans(1 - lod_data$delta)
-#
-# plot(s0, conf.int = F)
-# lines(s1, conf.int = F, col = 2)
-# lines(s2, conf.int = F, col = 3)
+# imp1_time <- imput_lod_tobit_v1(lod_data$lod.data, lod_data$delta, lod_data$X,
+#                                 lod_data$full.data, sig, alph)
+# imp2_time <- imput_lod_copula(lod_data$lod.data, lod_data$delta, lod_data$X)
+
+data.frame(
+  mix = which(lod_data$delta >= 0, arr.ind = T)[,2],
+  tres = imp1_time[[1]][lod_data$delta >= 0],
+  nres = imp1_time[[2]][lod_data$delta >= 0]) %>%
+  ggplot() +
+  geom_density(aes(x = tres)) +
+  geom_density(aes(x = nres), color = 2) +
+  facet_wrap(vars(mix), ncol = 2, scales = 'free')
+
+data.frame(
+  mix = which(lod_data$delta == 0, arr.ind = T)[,2],
+  tres = imp1_time[[1]][lod_data$delta == 0],
+  nres = imp1_time[[2]][lod_data$delta == 0]) %>%
+  ggplot() +
+  geom_density(aes(x = tres)) +
+  geom_density(aes(x = nres), color = 2) +
+  facet_wrap(vars(mix), ncol = 2, scales = 'free')
+
+data.frame(
+  mix = which(lod_data$delta == 0, arr.ind = T)[,2],
+  tres = lod_data$full.data[lod_data$delta == 0],
+  nres = imp1_time[[3]][lod_data$delta == 0]) %>%
+  ggplot() +
+  geom_density(aes(x = tres)) +
+  geom_density(aes(x = nres), color = 2) +
+  facet_wrap(vars(mix), ncol = 2, scales = 'free')
+
+data.frame(
+  mix = which(lod_data$delta == 0, arr.ind = T)[,2],
+  tres = lod_data$full.data[lod_data$delta == 0],
+  nres = imp1_time[[3]][lod_data$delta == 0]) %>%
+  ggplot() +
+  geom_point(aes(x = nres, y = tres)) +
+  facet_wrap(vars(mix), ncol = 2, scales = 'free')
+
+
+mix <- 5
+
+s0 <- survfit(Surv(lod_data$full.data[,mix], rep(1, nrow(lod_data$full.data))) ~ 1)
+s1 <- survfit(Surv(lod_data$lod.data[,mix], lod_data$delta[,mix]) ~ 1)
+s2 <- survfit(Surv(imp1_time[[3]][,mix], rep(1, nrow(imp1_time[[3]]))) ~ 1)
+s3 <- survfit(Surv(imp2_time[,mix], rep(1, nrow(imp2_time))) ~ 1)
+
+colMeans(1 - lod_data$delta)
+
+plot(s0, conf.int = F)
+lines(s1, conf.int = F, col = 2)
+lines(s2, conf.int = F, col = 3)
+abline(v = pop_LODs[mix])
+lines(s3, conf.int = F, col = 4)
+
+
+
+theta <- matrix(NA, ncol = 1+p+q, nrow = 4)
+
+X <- lod_data$X
+Z <- -lod_data$full.data
+Y <- cbind(1, X, Z) %>% rowSums() + rnorm(nrow(X))
+
+# full beta
+theta[1,] <- lm(Y ~ cbind(X, Z))$coef
+
+# LOD beta
+Z <- -lod_data$lod.data
+theta[2,] <- lm(Y ~ cbind(X, Z))$coef
+
+# mvn imputation
+Z <- -imp1_time[[3]]
+theta[3,] <- lm(Y ~ cbind(X, Z))$coef
+
+# copula imputation
+Z <- -imp2_time
+theta[4,] <- lm(Y ~ cbind(X, Z))$coef
+
+colnames(theta) <- c('Intercept', paste0('X', 1:q), paste0('Z', 1:p))
+round(theta-1, 4)
+
+
+bind_cols(
+  data.frame(lod_data$full.data) %>% rename_with(~gsub('X', 'Z1', .)),
+  data.frame(imp1_time[[3]]) %>% rename_with(~gsub('X', 'Z2', .)),
+  data.frame(imp2_time) %>% rename_with(~gsub('X', 'Z3', .))) %>%
+  pivot_longer(everything()) %>%
+  mutate(mix = substr(name, 3, 3),
+         name = substr(name, 1, 2)) %>%
+  ggplot() +
+  geom_density(aes(x = value, color = name), size = 1) +
+  geom_vline(aes(xintercept = pop_LODs),
+             data = data.frame(pop_LODs, mix = 1:5)) +
+  facet_wrap(vars(mix), ncol = 2, scales = 'free') +
+  theme_bw()
 
 
 
 # -------------------------------------------------------------------------
 
-time = lod_data$lod.data
-delta = lod_data$delta
-covs = lod_data$X
+rep_sim_lod <- function(n, p, q, sig) {
+  lod_data <- gen_env_mix(n = n, p = p, q = q, error.dist = 'mvnorm',
+                          alpha = alph, sigma = sig,
+                          return.full.data = TRUE,
+                          LOD = pop_LODs)
 
-p <- ncol(time)
-q <- ncol(covs)
-res <- array(dim = dim(time))
-surv <- vector('list', length = p)
-for (i in 1:p) {
-  # Rank AFT coefficients
-  alpha <- coef_rankAFT(y = time[,i], x = covs, delta = delta[,i],
-                        intercept = F)
+  theta <- matrix(NA, ncol = 1+p+q, nrow = 4)
 
-  # Residuals
-  res[,i] <- c(time[,i] - c(alpha %*% t(covs)))
+  X <- lod_data$X
+  Z <- -lod_data$full.data
+  Y <- cbind(1, X, Z) %>% rowSums() + rnorm(nrow(X))
 
-  # Residual survival
-  surv[[i]] <- survfit(Surv(res[,i], delta[,i]) ~ 1, se = F)
+  # full beta
+  theta[1,] <- lm(Y ~ cbind(X, Z))$coef
+
+  # LOD beta
+  Z <- -lod_data$lod.data
+  theta[2,] <- lm(Y ~ cbind(X, Z))$coef
+
+  # mvn imputation
+  mvn_time <- imput_lod_tobit(lod_data$lod.data, lod_data$delta, lod_data$X)
+  Z <- -mvn_time
+  theta[3,] <- lm(Y ~ cbind(X, Z))$coef
+
+  # copula imputation
+  cpl_time <- imput_lod_copula(lod_data$lod.data, lod_data$delta, lod_data$X)
+  Z <- -cpl_time
+  theta[4,] <- lm(Y ~ cbind(X, Z))$coef
+
+  colnames(theta) <- paste0('theta', 1:ncol(theta))
+  return(data.frame('method' = 1:4, theta))
 }
 
-# everyone that has at least one censored outcome
-idx <- which(rowSums(1 - delta) > 0)
-new.time <- time
 
-library(copula)
-u <- rCopula(length(idx), empCopula(pobs(res)))
-
-x <- 1:10
-y <- rnorm(10)
-approx(x, y)
-
-plot(x, y)
-points(approx(x, y), col = 2, pch = "*")
-points(approx(x, y, method = "constant"), col = 4, pch = "*")
+res1 <- lapply(1:20, function(x) {
+  print(x)
+  rep_sim_lod(n = 1000, p = 5, q = 2, sig = sig)
+}) %>% bind_rows()
 
 
-
-for (i in idx) {
-  j0 <- which(delta[i,] == 0)
-  j1 <- which(delta[i,] == 1)
-
-  res[i,j0]
+res2 <- lapply(1:50, function(x) {
+  print(x)
+  rep_sim_lod(n = 1000, p = 5, q = 2, sig = diag(5))
+}) %>% bind_rows()
 
 
-  if (length(j1) > 0) {
-    s00 <- as.matrix(S[j0,j0])
-    s11 <- as.matrix(S[j1,j1])
-    s01 <- as.matrix(S[j0,j1])
+colMeans(1 - lod_data$delta)
 
-    if (length(j0) == 1)
-      s01 <- t(s01)
+res1 %>%
+  group_by(method) %>%
+  summarise_all(list(b = ~mean(.)-1)) %>%
+  round(4)
 
-    cond.S <- s00 - s01 %*% solve(s11) %*% t(s01)
-    new.res <- tmvtnorm::rtmvnorm(1, lower = res[i,j0], sigma = cond.S,
-                                  algorithm = 'gibbs')
+res2 %>%
+  group_by(method) %>%
+  summarise_all(list(b = ~mean(.)-1)) %>%
+  round(4)
 
-    new.time[i,j0] <- c(1, covs[i,]) %*% beta[,j0] + new.res
-  } else {
-    new.res <- tmvtnorm::rtmvnorm(1, lower = res[i,], sigma = S,
-                                  algorithm = 'gibbs')
 
-    new.time[i,] <- c(1, covs[i,]) %*% beta[,j0] + new.res
-  }
-}
-
-new.time %>% tail()
-time %>% tail()
+# saveRDS(res1, 'res1.rds')
+# saveRDS(res2, 'res2.rds')
 
 
 
-mvtnorm::pmvnorm(upper = c(1.96, 1.96), sigma = diag(2), keepAttr = F)
-
-
-
-
-
-
-
-
-
-
+# -------------------------------------------------------------------------
 
 
 

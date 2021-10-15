@@ -17,9 +17,11 @@ RoxygenNote: 7.1.2
 URL: https://github.com/vsritter/LODmix
 BugReports: https://github.com/vsritter/LODmix/issues
 Imports: 
+    copula,
     magrittr,
     mvtnorm,
-    survival
+    survival,
+    tmvtnorm
 Suggests: 
     rmarkdown,
     knitr
